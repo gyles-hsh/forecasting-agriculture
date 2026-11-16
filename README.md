@@ -15,16 +15,17 @@ A MATLAB machine-learning pipeline that predicts **crop yield (tons)** from farm
 - [Getting Started](#getting-started)
 - [Outputs](#outputs)
 - [Notes](#notes)
+- [Limitations and Future Improvements](#limitations-and-future-improvements)
 - [Acknowledgements](#acknowledgements)
 
 ## Features
 
-- **Leak-free target encoding:** categorical features are encoded with 5-fold out-of-fold means
+- **Out-of-fold target encoding:** categorical features are encoded with 5-fold out-of-fold means
 - **Feature engineering:** efficiency and chemical-intensity features
 - **Importance-based feature selection:** grouped bagged-tree importance
 - **Bayesian hyperparameter tuning:** for all three models
 - **Ensemble model:** an equal-weight average of RF, NN and SVM predictions
-- **Robust evaluation:** 15 × repeated 3-fold CV with R², MAE and RMSE boxplots
+- **Repeated cross-validation:** 15 × repeated 3-fold CV with R², MAE and RMSE boxplots
 
 ## Repository Structure
 
@@ -39,12 +40,12 @@ forecasting-agriculture/
 **Source:** [Agriculture and Farming Dataset](https://www.kaggle.com/datasets/bhadramohit/agriculture-and-farming-dataset) by `bhadramohit` on Kaggle
 
 > [!IMPORTANT]
-> The dataset is **not included** in this repository. Download it from Kaggle (a free account is required) and save it as **`agriculture_dataset.csv`** in the same folder as `ForecastingAgriculture.m`.
+> The dataset is **not included** in this repository. Download it from Kaggle (you need to sign in) and save it as **`agriculture_dataset.csv`** in the same folder as `ForecastingAgriculture.m`.
 
 <details>
 <summary><b>Expected columns</b></summary>
 
-MATLAB's `readtable` turns special characters in headers into underscores, so `Farm_Area(acres)` becomes `Farm_Area_acres_`.
+MATLAB's `readtable` turns special characters in headers into underscores, so a header like `Farm_Area(acres)` becomes `Farm_Area_acres_`.
 
 | Column (as read by MATLAB) | Type | Description |
 |---|---|---|
@@ -94,7 +95,7 @@ The script stops with an error if it finds any other season value. The `Farm_ID`
 <details>
 <summary><b>2. Target encoding</b></summary>
 
-The categorical features (`Crop_Type`, `Irrigation_Type`, `Soil_Type` and `Season`) are replaced with the **mean yield of their category**. The means are computed out-of-fold over 5 folds, so no row is encoded with its own target value. Categories that don't appear in a training fold fall back to the global training mean.
+The categorical features (`Crop_Type`, `Irrigation_Type`, `Soil_Type` and `Season`) are replaced with the **mean yield of their category**. The means are computed out-of-fold over 5 folds, so no row is encoded with its own target value. Categories that don't appear in a training fold get that fold's overall mean yield.
 
 </details>
 
@@ -106,6 +107,8 @@ The categorical features (`Crop_Type`, `Irrigation_Type`, `Soil_Type` and `Seaso
 | `Fertilizer_Efficiency` | Yield ÷ fertilizer used |
 | `Water_Efficiency` | Yield ÷ water usage |
 | `Chemical_Intensity` | (fertilizer + pesticide) ÷ farm area |
+
+`Fertilizer_Efficiency` and `Water_Efficiency` are calculated from the target, yield. See [Limitations and Future Improvements](#limitations-and-future-improvements).
 
 </details>
 
@@ -123,7 +126,7 @@ Each model is tuned with MATLAB's built-in **Bayesian optimization** (3-fold CV)
 
 | Model | Function | Tuned hyperparameters | Max evaluations | Input |
 |---|---|---|:-:|---|
-| Random Forest | `fitrensemble` (Bag) | `NumLearningCycles`, `MinLeafSize`, `MaxNumSplits`, `NumVariablesToSample` | 25 | Raw |
+| Random Forest | `fitrensemble` (Bag) | `NumLearningCycles`, `MinLeafSize`, `MaxNumSplits`, `NumVariablesToSample` | 25 | Not standardized |
 | Neural Network | `fitrnet` | `LayerSizes`, `Lambda` | 20 | Z-scored |
 | SVM | `fitrsvm` | `KernelFunction`, `BoxConstraint`, `KernelScale` | 20 | Z-scored |
 
@@ -163,7 +166,7 @@ ForecastingAgriculture
 ```
 
 > [!NOTE]
-> The script clears the workspace and closes open figures before it starts. Tuning runs 65 Bayesian-optimization evaluations, and evaluation trains 4 models × 15 repeats × 3 folds, so a full run can take several minutes or more.
+> The script clears the workspace and closes open figures before it starts. Tuning runs 65 Bayesian-optimization evaluations. Evaluation then retrains each model 45 times (15 repeats × 3 folds) on its own, plus another 45 times for the ensemble. Run time depends on the dataset size and your hardware.
 
 ## Outputs
 
@@ -174,12 +177,22 @@ ForecastingAgriculture
 
 **Figures**
 - One figure per model (RF, NN, SVM and Combined) with **boxplots of R², MAE and RMSE** across the 15 repeats. Each boxplot is annotated with its min, Q1, median, mean, Q3 and max.
-- A **feature-importance** dashboard with three panels: categorical groups, numerical groups and all groups combined.
+- A **feature-importance** figure with three panels: categorical groups, numerical groups and all groups combined.
 
 ## Notes
 
 > [!TIP]
-> The script doesn't set a random seed, so results vary slightly between runs. Add `rng(42)` (or any seed) at the top of the script for reproducible results.
+> The script doesn't set a random seed, so results vary between runs. Add `rng(42)` (or any seed) at the top of the script for reproducible results.
+
+## Limitations and Future Improvements
+
+> [!WARNING]
+> **The reported scores overstate real-world performance.** Two engineered features, `Fertilizer_Efficiency` (yield ÷ fertilizer used) and `Water_Efficiency` (yield ÷ water usage), are calculated from `Yield_tons_`, which is the value the models are trying to predict. When either feature is selected, the models receive part of the answer as an input. As a result, the R², MAE and RMSE scores look better than they would on new farms where yield is not yet known.
+
+These are areas for future improvement:
+
+- Remove `Fertilizer_Efficiency` and `Water_Efficiency`, or replace them with features built only from inputs known before harvest, such as fertilizer or water used per acre.
+- Re-run the evaluation after this change to get scores that reflect how well the models predict yield in practice.
 
 ## Acknowledgements
 
